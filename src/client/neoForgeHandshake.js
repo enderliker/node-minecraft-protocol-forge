@@ -40,8 +40,8 @@ const NEOFORGE_CHANNELS = {
   EXTENSIBLE_ENUM_ACK: 'neoforge:extensible_enum_ack',
   FEATURE_FLAG_DATA: 'neoforge:feature_flag_data',
   FEATURE_FLAG_ACK: 'neoforge:feature_flag_acknowledge',
-  KNOWN_DATA_MAPS: 'neoforge:known_data_maps',
-  KNOWN_DATA_MAPS_REPLY: 'neoforge:known_data_maps_reply',
+  KNOWN_DATA_MAPS: 'neoforge:known_registry_data_maps',
+  KNOWN_DATA_MAPS_REPLY: 'neoforge:known_registry_data_maps_reply',
   SPLIT: 'neoforge:split',
   CONFIG_FILE: 'neoforge:config_file',
   COMMON_VERSION: 'c:version',
@@ -187,6 +187,9 @@ function neoForgeHandshake (client, options = {}) {
     } else if (ch === NEOFORGE_CHANNELS.FEATURE_FLAG_DATA) {
       debug('Received neoforge:feature_flag_data')
       handleFeatureFlagData(packet.data)
+    } else if (ch === NEOFORGE_CHANNELS.KNOWN_DATA_MAPS) {
+      debug('Received neoforge:known_registry_data_maps')
+      handleKnownDataMaps(packet.data)
     } else if (ch === NEOFORGE_CHANNELS.MODDED_NETWORK_QUERY) {
       debug('Received legacy neoforge:modded_network_query')
       handleNetworkQuery(packet.data)
@@ -211,11 +214,17 @@ function neoForgeHandshake (client, options = {}) {
 
   function handleNeoForgeRegister (buffer) {
     try {
+      let data = Buffer.from([0x00])
+      if (options.queryPayload) {
+        data = proto.createPacketBuffer('neoforge_modded_network_query', options.queryPayload)
+      } else if (options.queries) {
+        data = proto.createPacketBuffer('neoforge_modded_network_query', { queries: options.queries })
+      }
       client.write('custom_payload', {
         channel: NEOFORGE_CHANNELS.REGISTER,
-        data: Buffer.from([0x00])
+        data
       })
-      debug('Replied to neoforge:register with empty query')
+      debug('Replied to neoforge:register query (%d bytes)', data.length)
     } catch (err) {
       debug('Failed to reply to neoforge:register:', err.message)
     }
@@ -287,6 +296,27 @@ function neoForgeHandshake (client, options = {}) {
       debug('Replied to neoforge:feature_flag_data with ack')
     } catch (err) {
       debug('Failed to reply to neoforge:feature_flag_data:', err.message)
+    }
+  }
+
+  function handleKnownDataMaps (buffer) {
+    try {
+      const parsed = proto.parsePacketBuffer('known_registry_data_maps', buffer).data
+      debug('Parsed known_registry_data_maps with %d registries', parsed?.registries?.length || 0)
+      const replyRegistries = (parsed?.registries || []).map(r => ({
+        registry: r.registry,
+        dataMaps: (r.dataMaps || []).map(m => m.id)
+      }))
+      const replyData = proto.createPacketBuffer('known_registry_data_maps_reply', {
+        registries: replyRegistries
+      })
+      client.write('custom_payload', {
+        channel: NEOFORGE_CHANNELS.KNOWN_DATA_MAPS_REPLY,
+        data: replyData
+      })
+      debug('Replied to known_registry_data_maps with %d registries', replyRegistries.length)
+    } catch (err) {
+      debug('Failed to handle known_registry_data_maps:', err.message)
     }
   }
 

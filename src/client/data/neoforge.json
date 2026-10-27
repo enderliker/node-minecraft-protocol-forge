@@ -214,6 +214,87 @@
           ]
         }
       ]
+    ],
+    "known_data_map": [
+      "container",
+      [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "mandatory",
+          "type": "bool"
+        }
+      ]
+    ],
+    "known_registry_data_map_entry": [
+      "container",
+      [
+        {
+          "name": "registry",
+          "type": "string"
+        },
+        {
+          "name": "dataMaps",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "known_data_map"
+            }
+          ]
+        }
+      ]
+    ],
+    "known_registry_data_maps": [
+      "container",
+      [
+        {
+          "name": "registries",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "known_registry_data_map_entry"
+            }
+          ]
+        }
+      ]
+    ],
+    "known_registry_data_map_reply_entry": [
+      "container",
+      [
+        {
+          "name": "registry",
+          "type": "string"
+        },
+        {
+          "name": "dataMaps",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    ],
+    "known_registry_data_maps_reply": [
+      "container",
+      [
+        {
+          "name": "registries",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "known_registry_data_map_reply_entry"
+            }
+          ]
+        }
+      ]
     ]
   }
 }

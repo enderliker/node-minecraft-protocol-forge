@@ -159,4 +159,35 @@ describe('NeoForge ProtoDef schema', function () {
     assert.strictEqual(parsed.failureReasons[0].channel, 'mymod:mandatory_channel')
     assert.strictEqual(parsed.failureReasons[0].reason, 'Channel version mismatch: required 2.0.0 but got 1.0.0')
   })
+
+  it('serializes and deserializes known_registry_data_maps and reply', function () {
+    const sampleQuery = {
+      registries: [
+        {
+          registry: 'minecraft:block',
+          dataMaps: [
+            { id: 'create:catalysts', mandatory: true }
+          ]
+        }
+      ]
+    }
+    const buf = proto.createPacketBuffer('known_registry_data_maps', sampleQuery)
+    const parsed = proto.parsePacketBuffer('known_registry_data_maps', buf).data
+    assert.strictEqual(parsed.registries.length, 1)
+    assert.strictEqual(parsed.registries[0].registry, 'minecraft:block')
+    assert.strictEqual(parsed.registries[0].dataMaps[0].id, 'create:catalysts')
+    assert.strictEqual(parsed.registries[0].dataMaps[0].mandatory, true)
+
+    const reply = {
+      registries: [
+        {
+          registry: 'minecraft:block',
+          dataMaps: ['create:catalysts']
+        }
+      ]
+    }
+    const replyBuf = proto.createPacketBuffer('known_registry_data_maps_reply', reply)
+    const replyParsed = proto.parsePacketBuffer('known_registry_data_maps_reply', replyBuf).data
+    assert.strictEqual(replyParsed.registries[0].dataMaps[0], 'create:catalysts')
+  })
 })
