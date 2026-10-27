@@ -32,10 +32,41 @@ proto.addProtocol(neoforgeData, ['neoforge'])
 
 const NEOFORGE_CHANNELS = {
   MODDED_NETWORK_QUERY: 'neoforge:modded_network_query',
-  MODDED_NETWORK: 'neoforge:modded_network',
+  MODDED_NETWORK: 'neoforge:network',
+  MODDED_NETWORK_LEGACY: 'neoforge:modded_network',
   MODDED_NETWORK_SETUP_FAILED: 'neoforge:modded_network_setup_failed',
-  REGISTER: 'minecraft:register'
+  REGISTER: 'neoforge:register',
+  EXTENSIBLE_ENUM_DATA: 'neoforge:extensible_enum_data',
+  EXTENSIBLE_ENUM_ACK: 'neoforge:extensible_enum_ack',
+  FEATURE_FLAG_DATA: 'neoforge:feature_flag_data',
+  FEATURE_FLAG_ACK: 'neoforge:feature_flag_acknowledge',
+  KNOWN_DATA_MAPS: 'neoforge:known_data_maps',
+  KNOWN_DATA_MAPS_REPLY: 'neoforge:known_data_maps_reply',
+  SPLIT: 'neoforge:split',
+  CONFIG_FILE: 'neoforge:config_file',
+  COMMON_VERSION: 'c:version',
+  COMMON_REGISTER: 'c:register',
+  MINECRAFT_REGISTER: 'minecraft:register',
+  MINECRAFT_UNREGISTER: 'minecraft:unregister'
 }
+
+const DEFAULT_KNOWN_CHANNELS = [
+  NEOFORGE_CHANNELS.REGISTER,
+  NEOFORGE_CHANNELS.MODDED_NETWORK,
+  NEOFORGE_CHANNELS.MODDED_NETWORK_LEGACY,
+  NEOFORGE_CHANNELS.MODDED_NETWORK_QUERY,
+  NEOFORGE_CHANNELS.MODDED_NETWORK_SETUP_FAILED,
+  NEOFORGE_CHANNELS.EXTENSIBLE_ENUM_DATA,
+  NEOFORGE_CHANNELS.EXTENSIBLE_ENUM_ACK,
+  NEOFORGE_CHANNELS.FEATURE_FLAG_DATA,
+  NEOFORGE_CHANNELS.FEATURE_FLAG_ACK,
+  NEOFORGE_CHANNELS.KNOWN_DATA_MAPS,
+  NEOFORGE_CHANNELS.KNOWN_DATA_MAPS_REPLY,
+  NEOFORGE_CHANNELS.SPLIT,
+  NEOFORGE_CHANNELS.CONFIG_FILE,
+  NEOFORGE_CHANNELS.COMMON_VERSION,
+  NEOFORGE_CHANNELS.COMMON_REGISTER
+]
 
 /**
  * NeoForge 1.21.1+ Handshake & Channel Negotiation handler.
@@ -43,7 +74,7 @@ const NEOFORGE_CHANNELS = {
  *
  * @param {import('minecraft-protocol').Client} client Client connecting to the NeoForge server.
  * @param {{
- *   channels?: Object.<string, string>,
+ *   channels?: Object.<string, string> | string[],
  *   mods?: Array.<{ modid: string, version?: string }> | Object.<string, string>,
  *   autoNegotiate?: boolean
  * }} [options={}]
@@ -55,22 +86,73 @@ function neoForgeHandshake (client, options = {}) {
 
   debug('NeoForge handshake plugin attached')
 
+  const knownChannels = new Set(DEFAULT_KNOWN_CHANNELS)
+
+  // Add any explicitly provided user channels
+  if (Array.isArray(userChannels)) {
+    for (const ch of userChannels) {
+      if (typeof ch === 'string' && ch) knownChannels.add(ch)
+    }
+  } else if (typeof userChannels === 'object' && userChannels !== null) {
+    for (const ch of Object.keys(userChannels)) {
+      if (ch) knownChannels.add(ch)
+    }
+  }
+
+  // Add user mod ids as namespace channels if applicable
+  if (Array.isArray(userMods)) {
+    for (const m of userMods) {
+      if (m && m.modid) knownChannels.add(`${m.modid}:main`)
+    }
+  } else if (typeof userMods === 'object' && userMods !== null) {
+    for (const modId of Object.keys(userMods)) {
+      if (modId) knownChannels.add(`${modId}:main`)
+    }
+  }
+
   function registerNeoForgeChannels () {
-    const channels = [
-      NEOFORGE_CHANNELS.MODDED_NETWORK,
-      NEOFORGE_CHANNELS.MODDED_NETWORK_QUERY,
-      NEOFORGE_CHANNELS.MODDED_NETWORK_SETUP_FAILED
-    ]
-    const data = Buffer.from(channels.join('\0'))
+    const validChannels = Array.from(knownChannels).filter(ch => ch && !ch.includes(','))
+    const data = Buffer.from(validChannels.join('\0'))
     try {
       client.write('custom_payload', {
-        channel: NEOFORGE_CHANNELS.REGISTER,
+        channel: NEOFORGE_CHANNELS.MINECRAFT_REGISTER,
         data
       })
-      debug('Registered NeoForge channels via minecraft:register')
+      debug('Registered channels via minecraft:register (%d channels)', validChannels.length)
     } catch (err) {
       debug('Could not send channel registration (may not be connected yet):', err.message)
     }
+  }
+
+  // Answer ping with pong during configuration state
+  client.on('ping', function (packet) {
+    if (packet && typeof packet.id === 'number') {
+      try {
+        client.write('pong', { id: packet.id })
+        debug('Replied to configuration ping id=%d with pong', packet.id)
+      } catch (err) {
+        debug('Could not send pong packet:', err.message)
+      }
+    }
+  })
+
+  // Sanitize modded declare_commands trees to prevent chat.js crashes
+  if (typeof client.prependListener === 'function') {
+    client.prependListener('declare_commands', function (packet) {
+      if (packet && Array.isArray(packet.nodes)) {
+        const totalNodes = packet.nodes.length
+        const isValid = packet.nodes.every(node =>
+          Array.isArray(node.children) &&
+          node.children.every(child => typeof child === 'number' && child >= 0 && child < totalNodes) &&
+          (node.redirectNode === undefined || (typeof node.redirectNode === 'number' && node.redirectNode >= 0 && node.redirectNode < totalNodes))
+        )
+        if (!isValid || packet.rootIndex === undefined || packet.rootIndex >= totalNodes) {
+          debug('Sanitizing modded declare_commands packet to prevent chat validation crash')
+          packet.nodes = [{ flags: { command_node_type: 0 }, children: [] }]
+          packet.rootIndex = 0
+        }
+      }
+    })
   }
 
   // Hook into configuration state transitions
@@ -86,11 +168,127 @@ function neoForgeHandshake (client, options = {}) {
 
   // Listen for custom_payload packets from the server
   client.on('custom_payload', function (packet) {
-    if (packet.channel === NEOFORGE_CHANNELS.MODDED_NETWORK_QUERY) {
-      debug('Received neoforge:modded_network_query')
+    const ch = packet.channel
+
+    if (ch === NEOFORGE_CHANNELS.MINECRAFT_REGISTER || ch === NEOFORGE_CHANNELS.MINECRAFT_UNREGISTER) {
+      handleMinecraftRegister(packet.data)
+    } else if (ch === NEOFORGE_CHANNELS.REGISTER) {
+      debug('Received neoforge:register query')
+      handleNeoForgeRegister(packet.data)
+    } else if (ch === NEOFORGE_CHANNELS.COMMON_VERSION) {
+      debug('Received c:version query')
+      handleCommonVersion(packet.data)
+    } else if (ch === NEOFORGE_CHANNELS.COMMON_REGISTER) {
+      debug('Received c:register query')
+      handleCommonRegister(packet.data)
+    } else if (ch === NEOFORGE_CHANNELS.EXTENSIBLE_ENUM_DATA) {
+      debug('Received neoforge:extensible_enum_data')
+      handleExtensibleEnumData(packet.data)
+    } else if (ch === NEOFORGE_CHANNELS.FEATURE_FLAG_DATA) {
+      debug('Received neoforge:feature_flag_data')
+      handleFeatureFlagData(packet.data)
+    } else if (ch === NEOFORGE_CHANNELS.MODDED_NETWORK_QUERY) {
+      debug('Received legacy neoforge:modded_network_query')
       handleNetworkQuery(packet.data)
     }
   })
+
+  function handleMinecraftRegister (buffer) {
+    if (!buffer || buffer.length === 0) return
+    const str = buffer.toString('utf8')
+    const list = str.split('\0').filter(Boolean)
+    let added = false
+    for (const name of list) {
+      if (!name.includes(',') && !knownChannels.has(name)) {
+        knownChannels.add(name)
+        added = true
+      }
+    }
+    if (added && client.state === 'configuration') {
+      registerNeoForgeChannels()
+    }
+  }
+
+  function handleNeoForgeRegister (buffer) {
+    try {
+      client.write('custom_payload', {
+        channel: NEOFORGE_CHANNELS.REGISTER,
+        data: Buffer.from([0x00])
+      })
+      debug('Replied to neoforge:register with empty query')
+    } catch (err) {
+      debug('Failed to reply to neoforge:register:', err.message)
+    }
+  }
+
+  function handleCommonVersion (buffer) {
+    try {
+      // Common Networking version 1 negotiation (array with single varint 1)
+      client.write('custom_payload', {
+        channel: NEOFORGE_CHANNELS.COMMON_VERSION,
+        data: Buffer.from([0x01, 0x01])
+      })
+      debug('Replied to c:version with version 1')
+    } catch (err) {
+      debug('Failed to reply to c:version:', err.message)
+    }
+  }
+
+  function handleCommonRegister (buffer) {
+    let parsed
+    try {
+      parsed = proto.parsePacketBuffer('common_register', buffer).data
+      debug('Parsed server c:register:', parsed)
+      if (Array.isArray(parsed.channels)) {
+        for (const name of parsed.channels) {
+          if (name && !name.includes(',')) knownChannels.add(name)
+        }
+      }
+    } catch (err) {
+      debug('Failed to parse server c:register buffer:', err.message)
+    }
+
+    try {
+      const validChannels = Array.from(knownChannels).filter(c => c && !c.includes(','))
+      const replyData = proto.createPacketBuffer('common_register', {
+        version: parsed?.version || 1,
+        protocol: parsed?.protocol || 'play',
+        channels: validChannels
+      })
+      client.write('custom_payload', {
+        channel: NEOFORGE_CHANNELS.COMMON_REGISTER,
+        data: replyData
+      })
+      debug('Sent c:register reply payload (%d channels)', validChannels.length)
+      client.emit('neoforge_common_registered', { channels: validChannels })
+    } catch (err) {
+      debug('Failed to encode c:register reply:', err.message)
+    }
+  }
+
+  function handleExtensibleEnumData (buffer) {
+    try {
+      client.write('custom_payload', {
+        channel: NEOFORGE_CHANNELS.EXTENSIBLE_ENUM_ACK,
+        data: Buffer.alloc(0)
+      })
+      debug('Replied to neoforge:extensible_enum_data with ack')
+    } catch (err) {
+      debug('Failed to reply to neoforge:extensible_enum_data:', err.message)
+    }
+  }
+
+  function handleFeatureFlagData (buffer) {
+    try {
+      client.write('custom_payload', {
+        channel: NEOFORGE_CHANNELS.FEATURE_FLAG_ACK,
+        data: Buffer.alloc(0)
+      })
+      debug('Replied to neoforge:feature_flag_data with ack')
+    } catch (err) {
+      debug('Failed to reply to neoforge:feature_flag_data:', err.message)
+    }
+  }
 
   function handleNetworkQuery (buffer) {
     let query
@@ -157,7 +355,7 @@ function neoForgeHandshake (client, options = {}) {
     try {
       const responseBuffer = proto.createPacketBuffer('neoforge_modded_network', setupPayload)
       client.write('custom_payload', {
-        channel: NEOFORGE_CHANNELS.MODDED_NETWORK,
+        channel: NEOFORGE_CHANNELS.MODDED_NETWORK_LEGACY,
         data: responseBuffer
       })
       debug('Sent neoforge:modded_network response payload')

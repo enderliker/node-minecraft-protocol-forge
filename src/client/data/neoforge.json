@@ -176,6 +176,44 @@
           ]
         }
       ]
+    ],
+    "common_register": [
+      "container",
+      [
+        {
+          "name": "version",
+          "type": "varint"
+        },
+        {
+          "name": "protocol",
+          "type": "string"
+        },
+        {
+          "name": "channels",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    ],
+    "common_version": [
+      "container",
+      [
+        {
+          "name": "versions",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "varint"
+            }
+          ]
+        }
+      ]
     ]
   }
 }

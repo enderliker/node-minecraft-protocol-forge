@@ -152,4 +152,84 @@ describe('neoForgeHandshake', function () {
       data: Buffer.from([0xff, 0xff])
     })
   })
+
+  it('responds to configuration ping with pong', function () {
+    neoForgeHandshake(mockClient)
+
+    mockClient.emit('ping', { id: 42 })
+
+    const pong = writtenPackets.find(p => p.name === 'pong')
+    assert(pong, 'pong packet was sent')
+    assert.strictEqual(pong.params.id, 42)
+  })
+
+  it('responds to c:version with supported version 1', function () {
+    neoForgeHandshake(mockClient)
+
+    mockClient.emit('custom_payload', {
+      channel: 'c:version',
+      data: Buffer.from([0x01, 0x01])
+    })
+
+    const versionPkt = writtenPackets.find(p => p.name === 'custom_payload' && p.params.channel === 'c:version')
+    assert(versionPkt, 'c:version response was sent')
+    assert.deepStrictEqual(Array.from(versionPkt.params.data), [0x01, 0x01])
+  })
+
+  it('responds to c:register with common_register payload', function (done) {
+    neoForgeHandshake(mockClient)
+
+    mockClient.once('neoforge_common_registered', (event) => {
+      assert(event.channels.includes('jade:server_ping_v1'))
+
+      const regPkt = writtenPackets.find(p => p.name === 'custom_payload' && p.params.channel === 'c:register')
+      assert(regPkt, 'c:register response was sent')
+
+      const parsed = neoForgeHandshake.proto.parsePacketBuffer('common_register', regPkt.params.data).data
+      assert.strictEqual(parsed.version, 1)
+      assert.strictEqual(parsed.protocol, 'play')
+      assert(parsed.channels.includes('jade:server_ping_v1'))
+      done()
+    })
+
+    const sampleCRegister = neoForgeHandshake.proto.createPacketBuffer('common_register', {
+      version: 1,
+      protocol: 'play',
+      channels: ['jade:server_ping_v1', 'jade:request_block']
+    })
+
+    mockClient.emit('custom_payload', {
+      channel: 'c:register',
+      data: sampleCRegister
+    })
+  })
+
+  it('responds to neoforge:extensible_enum_data with neoforge:extensible_enum_ack', function () {
+    neoForgeHandshake(mockClient)
+
+    mockClient.emit('custom_payload', {
+      channel: 'neoforge:extensible_enum_data',
+      data: Buffer.from([0x00])
+    })
+
+    const ackPkt = writtenPackets.find(p => p.name === 'custom_payload' && p.params.channel === 'neoforge:extensible_enum_ack')
+    assert(ackPkt, 'extensible_enum_ack was sent')
+    assert.strictEqual(ackPkt.params.data.length, 0)
+  })
+
+  it('sanitizes invalid modded command tree in declare_commands', function () {
+    neoForgeHandshake(mockClient)
+
+    const invalidPacket = {
+      nodes: [
+        { flags: { command_node_type: 0 }, children: [999] } // references nonexistent node 999
+      ],
+      rootIndex: 0
+    }
+
+    mockClient.emit('declare_commands', invalidPacket)
+
+    assert.strictEqual(invalidPacket.nodes.length, 1)
+    assert.deepStrictEqual(invalidPacket.nodes[0].children, [])
+  })
 })
