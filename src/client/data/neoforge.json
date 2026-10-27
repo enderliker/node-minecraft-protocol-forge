@@ -1,0 +1,181 @@
+{
+  "types": {
+    "pstring": "native",
+    "string": [
+      "pstring",
+      {
+        "countType": "varint"
+      }
+    ],
+    "restBuffer": "native",
+    "connection_protocol": [
+      "mapper",
+      {
+        "type": "varint",
+        "mappings": {
+          "0": "handshaking",
+          "1": "play",
+          "2": "status",
+          "3": "login",
+          "4": "configuration"
+        }
+      }
+    ],
+    "packet_flow": [
+      "mapper",
+      {
+        "type": "varint",
+        "mappings": {
+          "0": "serverbound",
+          "1": "clientbound"
+        }
+      }
+    ],
+    "neoforge_query_component": [
+      "container",
+      [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "flow",
+          "type": [
+            "option",
+            "packet_flow"
+          ]
+        },
+        {
+          "name": "optional",
+          "type": "bool"
+        }
+      ]
+    ],
+    "neoforge_query_protocol": [
+      "container",
+      [
+        {
+          "name": "protocol",
+          "type": "connection_protocol"
+        },
+        {
+          "name": "components",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "neoforge_query_component"
+            }
+          ]
+        }
+      ]
+    ],
+    "neoforge_modded_network_query": [
+      "container",
+      [
+        {
+          "name": "queries",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "neoforge_query_protocol"
+            }
+          ]
+        }
+      ]
+    ],
+    "neoforge_network_channel": [
+      "container",
+      [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "chosenVersion",
+          "type": "string"
+        }
+      ]
+    ],
+    "neoforge_network_channel_entry": [
+      "container",
+      [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "value",
+          "type": "neoforge_network_channel"
+        }
+      ]
+    ],
+    "neoforge_setup_protocol": [
+      "container",
+      [
+        {
+          "name": "protocol",
+          "type": "connection_protocol"
+        },
+        {
+          "name": "channels",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "neoforge_network_channel_entry"
+            }
+          ]
+        }
+      ]
+    ],
+    "neoforge_modded_network": [
+      "container",
+      [
+        {
+          "name": "channels",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "neoforge_setup_protocol"
+            }
+          ]
+        }
+      ]
+    ],
+    "neoforge_setup_failure_entry": [
+      "container",
+      [
+        {
+          "name": "channel",
+          "type": "string"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        }
+      ]
+    ],
+    "neoforge_modded_network_setup_failed": [
+      "container",
+      [
+        {
+          "name": "failureReasons",
+          "type": [
+            "array",
+            {
+              "countType": "varint",
+              "type": "neoforge_setup_failure_entry"
+            }
+          ]
+        }
+      ]
+    ]
+  }
+}
