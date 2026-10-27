@@ -2,16 +2,66 @@
 [![NPM version](https://img.shields.io/npm/v/minecraft-protocol-forge.svg)](http://npmjs.com/package/minecraft-protocol-forge)
 [![Join the chat at https://gitter.im/PrismarineJS/node-minecraft-protocol](https://img.shields.io/badge/gitter-join%20chat-brightgreen.svg)](https://gitter.im/PrismarineJS/node-minecraft-protocol)
 
-Adds FML/Forge support to [node-minecraft-protocol](https://github.com/PrismarineJS/node-minecraft-protocol) (requires 0.17+)
+Adds FML/Forge and NeoForge support to [node-minecraft-protocol](https://github.com/PrismarineJS/node-minecraft-protocol) and [mineflayer](https://github.com/PrismarineJS/mineflayer).
 
 ## Features
 
-* Supports the `FML|HS` client handshake
-* Adds automatic Forge mod detection to node-minecraft-protocol's auto-versioning
+* Supports legacy `FML|HS` client handshake (Forge 1.7 - 1.12)
+* Supports FML2 network handshake (Forge 1.13 - 1.16)
+* Supports FML3 network handshake (Forge 1.16 - 1.20)
+* Supports **NeoForge 1.21.1+** configuration-phase channel negotiation (`neoforge:modded_network_query` / `neoforge:modded_network`)
+* Adds automatic Forge / NeoForge mod detection to node-minecraft-protocol's auto-versioning
 
 ## Usage
 
-Installable as a plugin for use with node-minecraft-protocol:
+### NeoForge 1.21.1 with Mineflayer
+
+```javascript
+const mineflayer = require('mineflayer')
+const { neoForgeHandshake } = require('minecraft-protocol-forge')
+
+const bot = mineflayer.createBot({
+  host: 'localhost',
+  port: 25565,
+  username: 'NeoBot',
+  version: '1.21.1'
+})
+
+// Attach NeoForge 1.21.1 handshake handler
+neoForgeHandshake(bot._client, {
+  autoNegotiate: true, // Automatically accepts server queried mod channels (default: true)
+  channels: {
+    // Optional channel version overrides
+    // 'somemod:channel': '1.0.0'
+  }
+})
+
+bot.on('spawn', () => {
+  console.log('Joined NeoForge server!')
+})
+```
+
+### NeoForge 1.21.1 with node-minecraft-protocol
+
+```javascript
+const mc = require('minecraft-protocol')
+const { neoForgeHandshake } = require('minecraft-protocol-forge')
+
+const client = mc.createClient({
+  host: 'localhost',
+  port: 25565,
+  username: 'Player',
+  version: '1.21.1'
+})
+
+neoForgeHandshake(client)
+
+client.on('neoforge_negotiated', (setup) => {
+  console.log('NeoForge channels negotiated:', setup.channels)
+})
+```
+
+### Legacy Forge (FML / FML2 / FML3)
 
 ```javascript
 var mc = require('minecraft-protocol');
@@ -52,9 +102,8 @@ var client = mc.createClient({
 autoVersionForge(client);
 ```
 
-This will automatically install the `forgeHandshake` plugin, with the appropriate mods,
-if the server advertises itself as Forge/FML. Useful for connecting to servers you don't
-know if they are Forge or not, or what mods they are using.
+This will automatically install the appropriate handshake plugin (`forgeHandshake`, `forgeHandshake2`, `forgeHandshake3` or `neoForgeHandshake`), with the appropriate mods,
+if the server advertises itself as Forge or NeoForge.
 
 ## Installation
 
@@ -62,7 +111,7 @@ know if they are Forge or not, or what mods they are using.
 
 ## Debugging
 
-You can enable some protocol debugging output using `NODE_DEBUG` environment variable:
+You can enable protocol debugging output using the `NODE_DEBUG` environment variable:
 
 ```bash
 NODE_DEBUG="minecraft-protocol-forge" node [...]
