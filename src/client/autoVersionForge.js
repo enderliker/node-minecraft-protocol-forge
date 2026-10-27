@@ -3,6 +3,7 @@
 const forgeHandshake = require('./forgeHandshake')
 const forgeHandshake2 = require('./forgeHandshake2')
 const forgeHandshake3 = require('./forgeHandshake3')
+const neoForgeHandshake = require('./neoForgeHandshake')
 
 module.exports = function (client, options) {
   if (!client.autoVersionHooks) client.autoVersionHooks = []
@@ -44,5 +45,27 @@ module.exports = function (client, options) {
 
     // Install the FML3 plugin with the given mods
     forgeHandshake3(client, { forgeMods })
+  })
+
+  client.autoVersionHooks.push(function (response, client, options) {
+    const isNeoForge = Boolean(
+      response.neoforgeData ||
+      (response.forgeData && (response.forgeData.neoforge || response.forgeData.isNeoForge)) ||
+      (response.version && typeof response.version.name === 'string' && /neoforge/i.test(response.version.name))
+    )
+
+    if (!isNeoForge) {
+      return // not ours
+    }
+
+    const mods = response.neoforgeData
+      ? (response.neoforgeData.mods || response.neoforgeData.channels)
+      : (response.forgeData ? response.forgeData.mods : undefined)
+
+    if (mods) {
+      console.log('Using neoForgeMods:', mods)
+    }
+
+    neoForgeHandshake(client, { mods })
   })
 }
